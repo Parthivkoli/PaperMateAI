@@ -6,6 +6,7 @@ import io
 import re
 from transformers import pipeline
 import streamlit.components.v1 as components
+import time
 
 # Custom CSS for styling (Dark mode friendly)
 st.markdown("""
@@ -35,11 +36,11 @@ def load_models():
         "detailed": pipeline("summarization", model="t5-base")
     }
 
-# Clean text for summarization
+# Clean text for summarization (Limit text size to 8,000 characters for memory efficiency)
 def clean_text(text):
     text = re.sub(r'\n\s*\n', '\n', text)
     text = re.sub(r'http\S+', '', text)
-    return text[:15000]  # Limit text size for summarization
+    return text[:8000]  # Limit text size for summarization
 
 # **App Title**
 st.title("🧠 PaperMate: AI Research Companion")
@@ -80,16 +81,17 @@ with st.sidebar:
     else:
         max_length = 300  # Default fallback
 
+# **Cache Search Functionality**
+@st.cache_data
+def fetch_papers(query):
+    client = Client()
+    search = client.results(Search(query=query, max_results=5, sort_by=SortCriterion.Relevance))
+    return list(search)
+
 # **Search Functionality**
 if search_btn and query:
     with st.spinner("🔭 Scanning arXiv for latest research..."):
-        client = Client()
-        search = client.results(Search(
-            query=query,
-            max_results=12,
-            sort_by=SortCriterion.Relevance
-        ))
-        st.session_state.papers = list(search)
+        st.session_state.papers = fetch_papers(query)
 
 # **Show Papers Below the Search Bar**
 if not st.session_state.view_paper:
@@ -155,8 +157,8 @@ if st.session_state.view_paper and st.session_state.selected_paper:
                 pdf_file = io.BytesIO(response.content)
                 pdf_reader = PyPDF2.PdfReader(pdf_file)
 
-                # Extract text safely
-                text = "\n".join([page.extract_text() or "" for page in pdf_reader.pages if page.extract_text()])
+                # Only extract text from the first 5 pages to save memory
+                text = "\n".join([page.extract_text() or "" for page in pdf_reader.pages[:5] if page.extract_text()])
 
                 if not text.strip():
                     st.error("⚠️ Unable to extract readable text from this PDF. It may be an image-based scan.")
@@ -190,3 +192,7 @@ if st.session_state.view_paper and st.session_state.selected_paper:
     if st.button("🔙 Back to Search"):
         st.session_state.view_paper = False
         st.rerun()
+
+# **Periodically Clear Session State (Optional)**
+if int(time.time()) % 600 == 0:  # Reset the session every 10 minutes
+    st.session_state.clear()
