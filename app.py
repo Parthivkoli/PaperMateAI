@@ -5,6 +5,7 @@ import PyPDF2
 import io
 import re
 from transformers import pipeline
+import streamlit.components.v1 as components
 
 # Custom CSS for styling (Dark mode friendly)
 st.markdown("""
@@ -131,8 +132,16 @@ if st.session_state.view_paper and st.session_state.selected_paper:
     
     st.markdown(f"### 📑 Read Full Paper")
     pdf_url = paper["pdf_url"]
+
+    # **Log PDF URL for debugging**
+    st.write(f"PDF URL: {pdf_url}")
+
     if pdf_url:
-        st.markdown(f'<iframe class="pdf-viewer" src="{pdf_url}"></iframe>', unsafe_allow_html=True)
+        try:
+            # Try using the iframe to display the PDF
+            components.iframe(pdf_url, width=700, height=500)
+        except Exception as e:
+            st.error(f"⚠️ Error displaying PDF: {e}")
     else:
         st.error("PDF not available for this paper.")
 
@@ -148,7 +157,7 @@ if st.session_state.view_paper and st.session_state.selected_paper:
 
                 # Extract text safely
                 text = "\n".join([page.extract_text() or "" for page in pdf_reader.pages if page.extract_text()])
-                
+
                 if not text.strip():
                     st.error("⚠️ Unable to extract readable text from this PDF. It may be an image-based scan.")
                 else:
