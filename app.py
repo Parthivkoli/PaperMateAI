@@ -5,8 +5,6 @@ import PyPDF2
 import io
 import re
 from transformers import pipeline
-import streamlit.components.v1 as components
-import time
 
 # Custom CSS for styling (Dark mode friendly)
 st.markdown("""
@@ -36,11 +34,11 @@ def load_models():
         "detailed": pipeline("summarization", model="t5-base")
     }
 
-# Clean text for summarization (Limit text size to 8,000 characters for memory efficiency)
+# Clean text for summarization
 def clean_text(text):
     text = re.sub(r'\n\s*\n', '\n', text)
     text = re.sub(r'http\S+', '', text)
-    return text[:8000]  # Limit text size for summarization
+    return text[:15000]  # Limit text size for summarization
 
 # **App Title**
 st.title("🧠 PaperMate: AI Research Companion")
@@ -81,17 +79,16 @@ with st.sidebar:
     else:
         max_length = 300  # Default fallback
 
-# **Cache Search Functionality**
-@st.cache_data
-def fetch_papers(query):
-    client = Client()
-    search = client.results(Search(query=query, max_results=5, sort_by=SortCriterion.Relevance))
-    return list(search)
-
 # **Search Functionality**
 if search_btn and query:
     with st.spinner("🔭 Scanning arXiv for latest research..."):
-        st.session_state.papers = fetch_papers(query)
+        client = Client()
+        search = client.results(Search(
+            query=query,
+            max_results=12,
+            sort_by=SortCriterion.Relevance
+        ))
+        st.session_state.papers = list(search)
 
 # **Show Papers Below the Search Bar**
 if not st.session_state.view_paper:
@@ -134,16 +131,8 @@ if st.session_state.view_paper and st.session_state.selected_paper:
     
     st.markdown(f"### 📑 Read Full Paper")
     pdf_url = paper["pdf_url"]
-
-    # **Log PDF URL for debugging**
-    st.write(f"PDF URL: {pdf_url}")
-
     if pdf_url:
-        try:
-            # Try using the iframe to display the PDF
-            components.iframe(pdf_url, width=700, height=500)
-        except Exception as e:
-            st.error(f"⚠️ Error displaying PDF: {e}")
+        st.markdown(f'<iframe class="pdf-viewer" src="{pdf_url}"></iframe>', unsafe_allow_html=True)
     else:
         st.error("PDF not available for this paper.")
 
@@ -157,9 +146,9 @@ if st.session_state.view_paper and st.session_state.selected_paper:
                 pdf_file = io.BytesIO(response.content)
                 pdf_reader = PyPDF2.PdfReader(pdf_file)
 
-                # Only extract text from the first 5 pages to save memory
-                text = "\n".join([page.extract_text() or "" for page in pdf_reader.pages[:5] if page.extract_text()])
-
+                # Extract text safely
+                text = "\n".join([page.extract_text() or "" for page in pdf_reader.pages if page.extract_text()])
+                
                 if not text.strip():
                     st.error("⚠️ Unable to extract readable text from this PDF. It may be an image-based scan.")
                 else:
@@ -192,7 +181,3 @@ if st.session_state.view_paper and st.session_state.selected_paper:
     if st.button("🔙 Back to Search"):
         st.session_state.view_paper = False
         st.rerun()
-
-# **Periodically Clear Session State (Optional)**
-if int(time.time()) % 600 == 0:  # Reset the session every 10 minutes
-    st.session_state.clear()
